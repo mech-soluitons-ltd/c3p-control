@@ -22,7 +22,7 @@ logging.basicConfig(
 class Server:
     def __init__(self, data_path: str) -> None:
         self.c3p_registration_url = "http://35.183.199.58:1000/c3p/device/registration"
-        self.controller_software_version = 'v0.0.01'
+        self.controller_software_version = 'v0.0.1'
         self.data_path = pathlib.Path(data_path).expanduser().resolve()
         self.get_controller_info()
 
