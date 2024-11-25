@@ -152,7 +152,8 @@ class MQTTListener:
             snapshot_url = f"{self.config['moonraker_api']}/webcam/snapshot"
             self.logger.info(f"请求URL: {snapshot_url}")
             
-            response = urllib.request.urlopen(snapshot_url, params={'timestamp': int(time.time())})
+            snapshot_url_with_params = f"{snapshot_url}?timestamp={int(time.time())}"
+            response = urllib.request.urlopen(snapshot_url_with_params)
             image_base64 = base64.b64encode(response.read()).decode('utf-8')
             self.logger.info("成功获取并编码图片")
             
