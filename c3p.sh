@@ -76,6 +76,9 @@ RestartSec=10
 echo "$SERVICE_FILE_CONTENT" | sudo tee /etc/systemd/system/c3p.service > /dev/null
 echo "服务文件已创建: /etc/systemd/system/c3p.service"
 
+echo "正在创建c3p-mqtt.cfg的符号链接..."  
+ln -s ~/printer_data/config/c3p-mqtt.cfg ~/KlipperScreen/config/c3p-mqtt.cfg
+
 # 重新加载系统服务并启动
 sudo systemctl daemon-reload
 echo "系统服务已重新加载"
