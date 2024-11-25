@@ -21,7 +21,7 @@ class MQTTConfig:
         'printer_status': "c3p/printer/status",    
         'print_status': "c3p/print/status",        
         'command': "{instance_name}/c3p/api/request",  
-        'response': "{instance_name}/moonraker/api/response"  
+        'response': "{instance_name}/c3p/api/response"  
     }
 
     # 消息方法定义
