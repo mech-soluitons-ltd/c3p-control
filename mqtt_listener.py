@@ -204,9 +204,9 @@ class MQTTListener:
 
             # 查找匹配的文件
             for file in files:
-                parts = file['filename'].split('---')
+                parts = file['filename'].split('///')
                 if len(parts) > 1 and parts[1] == file_key:
-                    new_name = f"{parts[0]}---{file_key}---{job_uuid}.gcode"
+                    new_name = f"{parts[0]}///{file_key}///{job_uuid}.gcode"
                     self.logger.info(f"找到匹配文件: {file['filename']} -> {new_name}")
                     return await self.handle_existing_file(file['filename'], new_name, job_uuid)
 
@@ -322,7 +322,7 @@ class MQTTListener:
             file_url = params['fileUrl']
             
             # 构造新文件名
-            new_name = f"{file_name}---{file_key}---{job_uuid}.gcode"
+            new_name = f"{file_name}///{file_key}///{job_uuid}.gcode"
             
             # 下载文件并监控进度
             loop = asyncio.get_event_loop()
@@ -405,6 +405,25 @@ class MQTTListener:
             
             if print_state == 'printing':
                 self.logger.info(f"文件 {new_name} 上传成功并已开始打印")
+                
+                # 发送任务状态消息
+                status_payload = {
+                    "method": MQTTConfig.METHODS['print_status'],
+                    "params": {
+                        "job_uuid": job_uuid,
+                        "state": 'printing',
+                        "message": f"文件 {new_name} 正在打印"
+                    },
+                    "printerUUID": self.instance_name
+                }
+                self.publish_message(
+                    MQTTConfig.TOPICS['print_status'],
+                    status_payload
+                )
+                self.publish_message(
+                    MQTTConfig.TOPICS['response'].format(**self.config),
+                    status_payload
+                )
                 self._send_progress_status(
                     file_name=file_name,
                     job_uuid=job_uuid,
