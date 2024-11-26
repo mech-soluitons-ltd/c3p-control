@@ -204,9 +204,9 @@ class MQTTListener:
 
             # 查找匹配的文件
             for file in files:
-                parts = file['filename'].split('///')
+                parts = file['filename'].split('-/-')
                 if len(parts) > 1 and parts[1] == file_key:
-                    new_name = f"{parts[0]}///{file_key}///{job_uuid}.gcode"
+                    new_name = f"{parts[0]}-/-{file_key}-/-{job_uuid}.gcode"
                     self.logger.info(f"找到匹配文件: {file['filename']} -> {new_name}")
                     return await self.handle_existing_file(file['filename'], new_name, job_uuid)
 
@@ -322,7 +322,7 @@ class MQTTListener:
             file_url = params['fileUrl']
             
             # 构造新文件名
-            new_name = f"{file_name}///{file_key}///{job_uuid}.gcode"
+            new_name = f"{file_name}-/-{file_key}-/-{job_uuid}.gcode"
             
             # 下载文件并监控进度
             loop = asyncio.get_event_loop()
