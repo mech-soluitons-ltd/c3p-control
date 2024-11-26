@@ -66,13 +66,10 @@ class MQTTListener:
         self.register_listeners()
         
         # 启动 WebSocket 连接
-        # asyncio.create_task(self.connect_websocket())
-        if not asyncio.get_event_loop().is_running():
-            self.logger.info("在事件循环中运行")
-            asyncio.run(self.connect_websocket())  # 确保在事件循环中运行
-        else:
-            self.logger.info("不在事件循环中运行")
-            asyncio.create_task(self.connect_websocket())  # 使用 asyncio.create_task 调用异步方法
+        try:
+            asyncio.create_task(self.connect_websocket())
+        except Exception as e:
+            self.logger.error(f"Task creation failed: {e}")
 
     def setup_logging(self):
         """配置日志系统"""
