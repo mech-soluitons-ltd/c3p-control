@@ -519,7 +519,7 @@ class MQTTListener:
             message = json.dumps(payload, ensure_ascii=False)
             self.mqtt.publish_topic(topic, message, retain=retain, qos=qos)
             self.logger.info(f"消息已发布到 MQTT - Topic: {topic}")
-            self.logger.info(f"消息内容: {message}")
+            # self.logger.info(f"消息内容: {message}")
         except Exception as e:
             self.logger.error(f"发布 MQTT 消息失败: {str(e)}")
 
@@ -552,7 +552,7 @@ class MQTTListener:
             self.logger.info("WebSocket 连接成功")
             
             # 订阅状态更新
-            await self.subscribe_to_updates()
+            await self.get_printer_status()
             
             # 启动状态检查
             self.stop_status_check = asyncio.Event()
@@ -578,8 +578,27 @@ class MQTTListener:
         """处理 websocket 消息"""
         try:
             data = json.loads(msg)
-            if "method" in data and data["method"] == "notify_status_update":
-                await self.handle_status_update(data["params"][0])
+            # self.logger.info(f"收到消息: {data}")
+            
+            # 检查是否包含 'result' 字段
+            if "result" in data:
+                status = data['result'].get('status', {})
+                
+                # 检查 'webhooks' 或 'print_stats' 是否存在
+                if 'webhooks' in status or 'print_stats' in status:
+                    status_data = {
+                        "state": status.get('webhooks', {}).get('state', 'unknown'),
+                        "message": status.get('webhooks', {}).get('state_message', ''),
+                        "print_stats": status.get('print_stats', {}),
+                        # "timestamp": int(time.time())
+                    }
+                    # self.logger.info(f"打印机状态数据: {status_data}")
+                    await self.handle_status_update(status_data)
+                # else:
+                    # self.logger.warning("消息中缺少 'webhooks' 和 'print_stats'，忽略")
+            #else:
+                # self.logger.warning("收到不相关的消息，忽略")
+                
         except json.JSONDecodeError:
             self.logger.error("JSON解析错误")
         except Exception as e:
@@ -609,25 +628,6 @@ class MQTTListener:
         }
         await self.handle_printer_status(status_data)
 
-    async def subscribe_to_updates(self):
-        """订阅打印机状态更新"""
-        try:
-            subscribe_msg = {
-                "jsonrpc": "2.0",
-                "method": "printer.objects.subscribe",
-                "params": {
-                    "objects": {
-                        "webhooks": None,
-                        "print_stats": None
-                    }
-                },
-                "id": int(time.time())
-            }
-            await self.ws_client.write_message(json.dumps(subscribe_msg))
-            self.logger.info("已订阅打印机状态更新")
-        except Exception as e:
-            self.logger.error(f"订阅状态更新失败: {str(e)}")
-
     async def check_status_updates(self):
         """检查状态更新"""
         self.logger.info("状态更新检查任务已启动")
@@ -638,17 +638,17 @@ class MQTTListener:
                 current_time = time.time()
                 check_count += 1
                 self.logger.info(f"第 {check_count} 次检查状态更新")
-                self.logger.info(f"距离上次更新: {current_time - self.last_status_update}秒")
+                # self.logger.info(f"距离上次更新: {current_time - self.last_status_update}秒")
                 
                 if current_time - self.last_status_update > self.status_timeout:
-                    self.logger.info("开始获取打印机状态")
+                    # self.logger.info("开始获取打印机状态")
                     # 添加 await
                     status = await self.get_printer_status()
                     if status:
                         self.logger.info(f"获取到状态: {status}")
                         await self.handle_printer_status(status)
                         self.last_status_update = current_time
-                        self.logger.info("状态更新完成")
+                        # self.logger.info("状态更新完成")
                     else:
                         self.logger.error("获取状态失败")
                 else:
@@ -665,7 +665,7 @@ class MQTTListener:
     async def get_printer_status(self) -> Dict[str, Any]:
         """获取打印机状态"""
         try:
-            self.logger.info("正在获取打印机状态...")
+            # self.logger.info("正在获取打印机状态...")
             
             # 构造查询请求
             request = {
@@ -677,35 +677,16 @@ class MQTTListener:
                         "print_stats": None
                     }
                 },
-                "id": int(time.time())
+                "id": time.time()
             }
             
             # 发送请求并等待响应
             if self.ws_client:
                 self.logger.info("发送状态查询请求...")
                 await self.ws_client.write_message(json.dumps(request))
-                self.logger.info("等待响应...")
-                response = await self.ws_client.read_message()
-                
-                if response:
-                    self.logger.info("收到响应")
-                    data = json.loads(response)
-                    status = data.get('result', {}).get('status', {})
-                    
-                    status_data = {
-                        "state": status.get('webhooks', {}).get('state', 'error'),
-                        "message": status.get('webhooks', {}).get('state_message', ''),
-                        "print_stats": status.get('print_stats', {}),
-                        # "timestamp": int(time.time())
-                    }
-                    
-                    self.logger.info(f"解析状态数据: {status_data}")
-                    return status_data
-                else:
-                    raise Exception("未收到响应")
             else:
-                raise Exception("WebSocket 未连接")
-            
+                self.logger.error("WebSocket 客户端未连接")
+                
         except Exception as e:
             self.logger.error(f"获取打印机状态失败: {str(e)}")
             return {
