@@ -209,7 +209,7 @@ class MQTTListener:
             for file in files:
                 parts = file['filename'].split('-@-')
                 if len(parts) > 1 and parts[1] == file_key:
-                    new_name = f"{parts[0]}-@-{file_key}-@-{job_uuid}.gcode"
+                    new_name = f"{parts[0]}-@-{job_uuid}-@-{file_key}.gcode"
                     self.logger.info(f"找到匹配文件: {file['filename']} -> {new_name}")
                     return await self.handle_existing_file(file['filename'], new_name, job_uuid)
 
@@ -325,7 +325,7 @@ class MQTTListener:
             file_url = params['fileUrl']
             
             # 构造新文件名
-            new_name = f"{file_name}-@-{file_key}-@-{job_uuid}.gcode"
+            new_name = f"{file_name}-@-{job_uuid}-@-{file_key}.gcode"
             
             # 下载文件并监控进度
             loop = asyncio.get_event_loop()
@@ -502,12 +502,12 @@ class MQTTListener:
             status_payload
         )
 
-        if progress == 100:
+        """if progress == 100:
             # print_status
             self.publish_message(
                 MQTTConfig.TOPICS['print_status'],
                 status_payload
-            )
+            )"""
 
     def publish_message(self, topic: str, payload: Dict[str, Any], retain: bool = False, qos: int = 0):
         """发布消息到 MQTT"""
@@ -578,7 +578,7 @@ class MQTTListener:
         """处理 websocket 消息"""
         try:
             data = json.loads(msg)
-            # self.logger.info(f"收到消息: {data}")
+            self.logger.info(f"收到消息: {data}")
             
             # 检查是否包含 'result' 字段
             if "result" in data:
@@ -593,7 +593,7 @@ class MQTTListener:
                         # "timestamp": int(time.time())
                     }
                     # self.logger.info(f"打印机状态数据: {status_data}")
-                    await self.handle_status_update(status_data)
+                    await self.handle_printer_status(status_data)
                 # else:
                     # self.logger.warning("消息中缺少 'webhooks' 和 'print_stats'，忽略")
             #else:
@@ -659,8 +659,8 @@ class MQTTListener:
                 import traceback
                 self.logger.error(f"错误详情: {traceback.format_exc()}")
             
-            self.logger.info("等待300秒后进行下一次检查...")
-            await asyncio.sleep(300)
+            self.logger.info("等待2秒后进行下一次检查...")
+            await asyncio.sleep(2)
 
     async def get_printer_status(self) -> Dict[str, Any]:
         """获取打印机状态"""
@@ -759,7 +759,7 @@ class MQTTListener:
     async def handle_print_status(self, status: Dict[str, Any]):
         """处理打印任务状态更新"""
         self._send_status_message(
-            MQTTConfig.METHODS['printer_status'],
+            MQTTConfig.METHODS['print_status'],
             status,
             retain=True,
             qos=1

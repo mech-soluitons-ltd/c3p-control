@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <style>
+        #messages {
+            border: 1px solid #ccc;
+            height: 200px;
+            overflow-y: scroll;
+            padding: 5px;
+        }
+        #input {
+            width: 80%;
+        }
+        #send {
+            width: 15%;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="messages"></div>
+    <input type="text" id="input" placeholder="Type a message..." />
+    <button id="send">Send</button>
+
+    <script>
+        // {"jsonrpc":"2.0","method":"server.connection.identify","params":{"client_name":"c3pmqtt","version":"0.0.1","type":"web","url":"https://github.com/mainsail-crew/mainsail"},"id":64218}
+        // {"jsonrpc":"2.0","method":"server.info","params":{},"id":14551}
+        // {"jsonrpc":"2.0","method":"printer.info","params":{},"id":79911}
+        // 创建 WebSocket 连接
+        const socket = new WebSocket('ws://192.168.3.97/websocket');
+
+        // 连接打开时的回调
+        socket.addEventListener('open', function (event) {
+            console.log('WebSocket 连接已打开');
+            document.getElementById('messages').innerHTML += '<p>Connected to WebSocket server</p>';
+        });
+
+        // 接收到消息时的回调
+        socket.addEventListener('message', function (event) {
+            const ddd = JSON.parse(event.data);
+            if (ddd.method !== 'notify_proc_stat_update') {
+                document.getElementById('messages').innerHTML += '<p>Received: ' + event.data + '</p>';
+            }
+            console.log('收到消息:', event.data);
+        });
+
+        // 连接关闭时的回调
+        socket.addEventListener('close', function (event) {
+            console.log('WebSocket 连接已关闭');
+            document.getElementById('messages').innerHTML += '<p>Disconnected from WebSocket server</p>';
+        });
+
+        // 连接出错时的回调
+        socket.addEventListener('error', function (event) {
+            console.error('WebSocket 错误:', event);
+            document.getElementById('messages').innerHTML += '<p>Error occurred</p>';
+        });
+
+        // 发送消息
+        document.getElementById('send').addEventListener('click', function () {
+            const message = document.getElementById('input').value;
+            if (message) {
+                socket.send(message);
+                console.log('发送消息:', message);
+                // document.getElementById('messages').innerHTML += '<p>Sent: ' + message + '</p>';
+                document.getElementById('input').value = ''; // 清空输入框
+            }
+        });
+    </script>
+</body>
+</html>
