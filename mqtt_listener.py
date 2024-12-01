@@ -114,7 +114,7 @@ class MQTTListener:
     def register_listeners(self):
         """注册MQTT主题监听"""
         topic = MQTTConfig.TOPICS['command'].format(instance_name=self.instance_name)
-        self.mqtt.subscribe_topic(topic, self._handle_message)
+        self.mqtt.subscribe_topic(topic, self._handle_message, qos=1)
         self.logger.info(f"已订阅MQTT主题: {topic}")
 
     def get_message_handler(self, method_name: str) -> Optional[Callable]:
