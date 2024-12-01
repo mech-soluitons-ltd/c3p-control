@@ -27,9 +27,11 @@ class MQTTConfig:
     # 消息方法定义
     METHODS = {
         'webcam_snapshot': "webcam.snapshot",      
-        'print_new': "print.new",          
-        'print_progress': "print.progress", 
-        'print_status': "print.status", 
+        'print_new': "printer.print.new",          
+        'print_progress': "printer.print.progress", 
+        'print_status': "printer.print.status",      
+        'print_start': "printer.print.start",      
+        'printer_error': "printer.error",          
         'printer_status': "printer.status",        
     }
 
@@ -68,11 +70,6 @@ class MQTTListener:
             asyncio.create_task(self.connect_websocket())
         except Exception as e:
             self.logger.error(f"Task creation failed: {e}")
-        
-        # 状态缓存
-        self.previous_status_data = None
-        self.same_status_count = 0
-        self.max_same_status_count = 100
 
     def setup_logging(self):
         """配置日志系统"""
@@ -107,7 +104,7 @@ class MQTTListener:
             # 等待 MQTT 连接建立
             await asyncio.sleep(2)
             self.logger.info("开始发送初始化测试消息")
-            # self.send_error_message("测试消息")
+            self.send_error_message("测试消息")
         except Exception as e:
             self.logger.error(f"发送初始化测试消息失败: {str(e)}")
 
@@ -145,10 +142,10 @@ class MQTTListener:
                 
         except json.JSONDecodeError as e:
             self.logger.error(f"JSON解码错误: {str(e)}")
-            # self.send_error_message(f"无效的JSON格式: {str(e)}")
+            self.send_error_message(f"无效的JSON格式: {str(e)}")
         except Exception as e:
             self.logger.error(f"处理消息时出错: {str(e)}")
-            # self.send_error_message(str(e))
+            self.send_error_message(str(e))
 
     def handle_webcam_snapshot(self, payload: Dict[str, Any] = None):
         """处理摄像头快照请求"""
@@ -163,34 +160,27 @@ class MQTTListener:
             image_base64 = base64.b64encode(response.read()).decode('utf-8')
             self.logger.info("成功获取并编码图片")
             
-            self.send_snapshot_response("success", image_base64)
+            response_payload = {
+                "method": MQTTConfig.METHODS['webcam_snapshot'],
+                "params": {
+                    "value": image_base64
+                }
+            }
+            
+            self.publish_message(
+                MQTTConfig.TOPICS['response'].format(**self.config),
+                response_payload
+            )
+            self.logger.info("已发送摄像头快照响应")
             
         except urllib.request.HTTPError as e:
             error_msg = f"请求摄像头快照失败: {str(e)}"
             self.logger.error(error_msg)
-            self.send_snapshot_response(error_msg)
+            self.send_error_message(error_msg)
         except Exception as e:
             error_msg = f"处理摄像头快照失败: {str(e)}"
             self.logger.error(error_msg)
-            self.send_snapshot_response(error_msg)
-
-    def send_snapshot_response(self, status: str, value: Optional[str] = None):
-        """发送摄像头快照响应"""
-        response_payload = {
-            "method": MQTTConfig.METHODS['webcam_snapshot'],
-            "params": {
-                "status": status,
-            }
-        }
-        if value:
-            response_payload["params"]["value"] = value
-
-        self.publish_message(
-            MQTTConfig.TOPICS['response'].format(**self.config),
-            response_payload,
-            qos=0
-        )
-        self.logger.info("已发送摄像头快照响应")
+            self.send_error_message(error_msg)
 
     async def handle_print_new(self, payload: Dict[str, Any]):
         """处理新打印任务"""
@@ -346,7 +336,6 @@ class MQTTListener:
             downloaded_size = 0
             file_content = bytearray()
             last_report_time = time.time()
-            last_report_progress = 0
             
             while True:
                 chunk = await loop.run_in_executor(None, response.read, 8192)
@@ -357,19 +346,15 @@ class MQTTListener:
                 downloaded_size += len(chunk)
                 
                 current_time = time.time()
-                current_progress = int(downloaded_size / total_size * 100)
-                
-                # 检查是否满足发送消息的条件
-                if (current_time - last_report_time >= 3) or (current_progress - last_report_progress >= 5):
+                if current_time - last_report_time >= 3:
                     self._send_progress_status(
                         job_uuid=job_uuid,
                         file_name=file_name,
-                        progress=current_progress,
+                        progress=int(downloaded_size / total_size * 100),
                         uploaded=downloaded_size,
                         total=total_size
                     )
                     last_report_time = current_time
-                    last_report_progress = current_progress
             
             # 上传文件到打印机
             boundary = '----WebKitFormBoundary' + ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(16))
@@ -442,7 +427,13 @@ class MQTTListener:
                     MQTTConfig.TOPICS['response'].format(**self.config),
                     status_payload
                 )
-                
+                self._send_progress_status(
+                    file_name=file_name,
+                    job_uuid=job_uuid,
+                    progress=100,
+                    uploaded=total_size,
+                    total=total_size
+                )
                 return True
             else:
                 error_msg = f"文件已上传但未开始打印，当前状态: {print_state}"
@@ -511,8 +502,14 @@ class MQTTListener:
             status_payload
         )
 
+        """if progress == 100:
+            # print_status
+            self.publish_message(
+                MQTTConfig.TOPICS['print_status'],
+                status_payload
+            )"""
 
-    def publish_message(self, topic: str, payload: Dict[str, Any], retain: bool = False, qos: int = 1):
+    def publish_message(self, topic: str, payload: Dict[str, Any], retain: bool = False, qos: int = 0):
         """发布消息到 MQTT"""
         try:
             # 如果 topic 中包含 {instance_name}，进行替换
@@ -526,6 +523,16 @@ class MQTTListener:
         except Exception as e:
             self.logger.error(f"发布 MQTT 消息失败: {str(e)}")
 
+    def send_error_message(self, error_msg: str):
+        """发送错误消息"""
+        error_payload = {
+            "method": MQTTConfig.METHODS['printer_error'],
+            "params": {"error": error_msg}
+        }
+        self.publish_message(
+            MQTTConfig.TOPICS['response'].format(**self.config),
+            error_payload
+        )
 
     def cleanup(self):
         """清理资源"""
@@ -571,61 +578,55 @@ class MQTTListener:
         """处理 websocket 消息"""
         try:
             data = json.loads(msg)
-            # self.logger.info(f"收到消息: {data}")
+            self.logger.info(f"收到消息: {data}")
             
+            # 检查是否包含 'result' 字段
             if "result" in data:
                 status = data['result'].get('status', {})
-                self.process_status_message(status)
-            else:
+                
+                # 检查 'webhooks' 或 'print_stats' 是否存在
+                if 'webhooks' in status or 'print_stats' in status:
+                    status_data = {
+                        "state": status.get('webhooks', {}).get('state', 'unknown'),
+                        "message": status.get('webhooks', {}).get('state_message', ''),
+                        "print_stats": status.get('print_stats', {}),
+                        # "timestamp": int(time.time())
+                    }
+                    # self.logger.info(f"打印机状态数据: {status_data}")
+                    await self.handle_printer_status(status_data)
+                # else:
+                    # self.logger.warning("消息中缺少 'webhooks' 和 'print_stats'，忽略")
+            #else:
                 # self.logger.warning("收到不相关的消息，忽略")
-                pass
                 
         except json.JSONDecodeError:
             self.logger.error("JSON解析错误")
         except Exception as e:
             self.logger.error(f"处理 WebSocket 消息失败: {str(e)}")
+            return False
+        return True
 
-    def process_status_message(self, status: Dict[str, Any]):
-        """处理状态消息"""
-        if 'webhooks' in status or 'print_stats' in status:
-            # self.logger.info("处理包含 'webhooks' 或 'print_stats' 的消息")
-            
-            status_data = {
-                "method": "printer.status",
-                "printerUUID": self.instance_name,
-                "params": {
-                    "state": status.get('webhooks', {}).get('state', 'unknown'),
-                    "message": status.get('webhooks', {}).get('state_message', ''),
-                    "print_stats": status.get('print_stats', {}),
-                    # "timestamp": int(time.time())
-                }
-            }
-            
-            # 检查状态是否变化
-            if status_data != self.previous_status_data:
-                self.logger.info("状态已变化，发送消息")
-                self.publish_status_message(status_data)
-                self.previous_status_data = status_data
-                self.same_status_count = 0
-            else:
-                self.same_status_count += 1
-                # self.logger.info(f"状态未变化，计数: {self.same_status_count}")
-                if self.same_status_count >= self.max_same_status_count:
-                    # self.logger.info("状态未变化达到10次，发送消息")
-                    self.publish_status_message(status_data)
-                    self.same_status_count = 0
-        else:
-            self.logger.warning("消息中缺少 'webhooks' 和 'print_stats'，忽略")
+    async def handle_status_update(self, status: Dict[str, Any]):
+        """处理状态更新"""
+        self.last_status_update = time.time()
+        
+        try:
+            if "webhooks" in status:
+                await self.handle_webhook_status(status)
+            if "print_stats" in status:
+                await self.handle_print_status(status)
+        except Exception as e:
+            self.logger.error(f"处理状态更新失败: {e}")
 
-    def publish_status_message(self, status_data):
-        """发布状态消息到 MQTT"""
-        self.publish_message(
-            MQTTConfig.TOPICS['printer_status'],
-            status_data,
-            retain=True,
-            qos=1
-        )
-        self.logger.info(f"已发送状态消息: {status_data}")
+    async def handle_webhook_status(self, status: Dict[str, Any]):
+        """处理 webhook 状态"""
+        status_data = {
+            "state": status.get('webhooks', {}).get('state', 'unknown'),
+            "message": status.get('webhooks', {}).get('state_message', ''),
+            "software_version": status.get('software_version', ''),
+            # "timestamp": int(time.time())
+        }
+        await self.handle_printer_status(status_data)
 
     async def check_status_updates(self):
         """检查状态更新"""
@@ -641,7 +642,15 @@ class MQTTListener:
                 
                 if current_time - self.last_status_update > self.status_timeout:
                     # self.logger.info("开始获取打印机状态")
-                    await self.get_printer_status()
+                    # 添加 await
+                    status = await self.get_printer_status()
+                    if status:
+                        self.logger.info(f"获取到状态: {status}")
+                        await self.handle_printer_status(status)
+                        self.last_status_update = current_time
+                        # self.logger.info("状态更新完成")
+                    else:
+                        self.logger.error("获取状态失败")
                 else:
                     self.logger.info("未到更新时间")
                     
@@ -650,8 +659,8 @@ class MQTTListener:
                 import traceback
                 self.logger.error(f"错误详情: {traceback.format_exc()}")
             
-            # self.logger.info("等待300秒后进行下一次检查...")
-            await asyncio.sleep(2)
+            self.logger.info("等待300秒后进行下一次检查...")
+            await asyncio.sleep(300)
 
     async def get_printer_status(self) -> Dict[str, Any]:
         """获取打印机状态"""
@@ -665,7 +674,7 @@ class MQTTListener:
                 "params": {
                     "objects": {
                         "webhooks": None,
-                        "print_stats": ["state", "filename"]
+                        "print_stats": None
                     }
                 },
                 "id": time.time()
@@ -673,7 +682,7 @@ class MQTTListener:
             
             # 发送请求并等待响应
             if self.ws_client:
-                # self.logger.info("发送状态查询请求...")
+                self.logger.info("发送状态查询请求...")
                 await self.ws_client.write_message(json.dumps(request))
             else:
                 self.logger.error("WebSocket 客户端未连接")
@@ -686,6 +695,84 @@ class MQTTListener:
                 # "timestamp": int(time.time())
             }
 
+    def _send_status_message(self, method: str, status: Dict[str, Any], job_uuid: str = None, 
+                           retain: bool = False, qos: int = 0):
+        """统一的状态消息发送方法"""
+        try:
+            # 构建基础payload
+            payload = {
+                "method": method,
+                "params": status,
+                "printerUUID": self.instance_name
+            }
+            
+            # 如果有job_uuid则添加
+            if job_uuid:
+                payload["params"]["job_uuid"] = job_uuid
+                
+            # 根据方法选择正确的主题
+            topic = (MQTTConfig.TOPICS['printer_status'] 
+                    if method == MQTTConfig.METHODS['printer_status']
+                    else MQTTConfig.TOPICS['print_status'])
+            
+            # 发送到对应主题
+            self.publish_message(
+                topic,
+                payload,
+                retain=retain,
+                qos=qos
+            )
+            
+            # 发送到response主题
+            self.publish_message(
+                MQTTConfig.TOPICS['response'].format(**self.config),
+                payload,
+                retain=retain,
+                qos=qos
+            )
+            
+            self.logger.info(f"已发送状态消息到 {topic}: {payload}")
+            
+        except Exception as e:
+            self.logger.error(f"发送状态消息失败: {str(e)}")
+            self._handle_error(str(e), job_uuid)
+            
+    def _handle_error(self, error_msg: str, job_uuid: str = None):
+        """统一的错误处理方法"""
+        self.logger.error(error_msg)
+        
+        if job_uuid:
+            # 如果有job_uuid,发送打印状态错误
+            status = {
+                "state": "error",
+                "message": error_msg
+            }
+            self._send_status_message(
+                MQTTConfig.METHODS['print_status'],
+                status,
+                job_uuid
+            )
+        else:
+            # 否则发送普通错误消息
+            self.send_error_message(error_msg)
+
+    async def handle_print_status(self, status: Dict[str, Any]):
+        """处理打印任务状态更新"""
+        self._send_status_message(
+            MQTTConfig.METHODS['print_status'],
+            status,
+            retain=True,
+            qos=1
+        )
+
+    async def handle_printer_status(self, status: Dict[str, Any]):
+        """处理打印机状态更新"""
+        self._send_status_message(
+            MQTTConfig.METHODS['printer_status'],
+            status,
+            retain=True,
+            qos=1
+        )
 
 def load_component(config):
     return MQTTListener(config)

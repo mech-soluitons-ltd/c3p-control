@@ -139,8 +139,9 @@ class Server:
 
     def setup_mqtt_config(self, config):
         config.add_section('mqtt')
-        config.set('mqtt', 'address', '35.183.199.58')
-        config.set('mqtt', 'port', '1883')
+        config.set('mqtt', 'enable_tls', 'True')
+        config.set('mqtt', 'address', 'mqtt.cloud3dprint.com')
+        config.set('mqtt', 'port', '8883')
         config.set('mqtt', 'mqtt_protocol', 'v5')
         config.set('mqtt', 'enable_moonraker_api', 'True')
         config.set('mqtt', 'status_interval', '1')
