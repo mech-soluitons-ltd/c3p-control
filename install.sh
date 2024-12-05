@@ -70,7 +70,7 @@ User=$USER_NAME
 SupplementaryGroups=moonraker-admin
 RemainAfterExit=yes
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=python3 $SCRIPT_DIR/c3p-control/c3p_mqtt.py
+ExecStart=python3 $SCRIPT_DIR/c3p_mqtt.py
 Restart=always
 RestartSec=10
 EOF
