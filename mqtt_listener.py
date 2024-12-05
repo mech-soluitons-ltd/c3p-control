@@ -636,7 +636,7 @@ class MQTTListener:
             try:
                 current_time = time.time()
                 check_count += 1
-                self.logger.info(f"第 {check_count} 次检查状态更新")
+                # self.logger.info(f"第 {check_count} 次检查状态更新")
                 # self.logger.info(f"距离上次更新: {current_time - self.last_status_update}秒")
                 
                 if current_time - self.last_status_update > self.status_timeout:
