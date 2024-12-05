@@ -138,6 +138,16 @@ class Server:
             # 这里可以选择抛出异常或进行其他处理
 
     def setup_mqtt_config(self, config):
+        # 添加 update_manager 配置段
+        config.add_section('update_manager c3p_control')
+        config.set('update_manager c3p_control', 'type', 'git_repo')
+        config.set('update_manager c3p_control', 'path', '~/c3p-control')
+        config.set('update_manager c3p_control', 'origin', 'https://github.com/mech-soluitons-ltd/c3p-control.git')
+        config.set('update_manager c3p_control', 'primary_branch', 'main')
+        config.set('update_manager c3p_control', 'managed_services', 'c3p')
+        config.set('update_manager c3p_control', 'install_script', 'install.sh')
+
+        # MQTT 配置
         config.add_section('mqtt')
         config.set('mqtt', 'enable_tls', 'True')
         config.set('mqtt', 'address', 'mqtt.cloud3dprint.com')
