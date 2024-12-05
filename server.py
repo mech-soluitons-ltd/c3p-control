@@ -173,6 +173,7 @@ class Server:
         config.set('mqtt', 'password', self.auth_token)
         config.set('mqtt', 'client_id', self.device_internal_uuid)
         config.set('mqtt', 'instance_name', self.device_internal_uuid)
+        config.set('mqtt', 'access_code', self.access_code)
         config.add_section('mqtt_listener')
 
     def write_config_to_file(self, config, path):
